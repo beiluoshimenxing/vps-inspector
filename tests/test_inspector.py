@@ -141,6 +141,47 @@ class InspectorTests(unittest.TestCase):
             self.assertEqual([p.name for p in Path(directory).iterdir()], ["report.png"])
 
     @unittest.skipUnless(os.name == "posix", "Linux process groups required")
+    def test_interactive_standalone_heredoc_uses_controlling_tty(self):
+        import pty
+        import select
+        import time
+        pid, fd = pty.fork()
+        if pid == 0:
+            os.execvp("bash", ["bash", str(ROOT / "check.sh"), "-N"])
+        data = bytearray()
+        status = None
+        try:
+            os.write(fd, b"cpu\nnone\nn\nnone\n")
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                ready, _, _ = select.select([fd], [], [], .2)
+                if ready:
+                    try:
+                        chunk = os.read(fd, 65536)
+                    except OSError:
+                        break
+                    if not chunk:
+                        break
+                    data.extend(chunk)
+                done, value = os.waitpid(pid, os.WNOHANG)
+                if done:
+                    status = value
+                    break
+            if status is None:
+                done, value = os.waitpid(pid, os.WNOHANG)
+                if done:
+                    status = value
+            if status is None:
+                os.kill(pid, signal.SIGKILL)
+                _, status = os.waitpid(pid, 0)
+            text = data.decode(errors="replace")
+            self.assertEqual(os.waitstatus_to_exitcode(status), 0, text)
+            self.assertIn("Modules: cpu", text)
+            self.assertIn("Report not saved as text", text)
+        finally:
+            os.close(fd)
+
+    @unittest.skipUnless(os.name == "posix", "Linux process groups required")
     def test_timeout_terminates_children(self):
         with tempfile.TemporaryDirectory() as directory:
             pidfile = Path(directory) / "pid"

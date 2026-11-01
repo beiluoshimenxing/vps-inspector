@@ -469,17 +469,19 @@ def parser():
 
 def interactive(args, p):
     try:
-        tty = open("/dev/tty", "r+", encoding="utf-8", buffering=1)
+        tty = open("/dev/tty", "r", encoding="utf-8")
+        output = open("/dev/tty", "w", encoding="utf-8", buffering=1)
     except OSError:
         p.error("-N needs a terminal; use --modules / --stress / --disk-bench / --png in automation")
     def ask(prompt, default):
-        tty.write(prompt + " [" + default + "]: ")
+        output.write(prompt + " [" + default + "]: ")
+        output.flush()
         answer = tty.readline()
         if not answer:
             raise ValueError("Terminal closed")
         return answer.strip() or default
-    with tty:
-        tty.write("VPS Inspector 交互模式：默认不压测、不写测试文件、不保存报告。\n")
+    with tty, output:
+        output.write("VPS Inspector 交互模式：默认不压测、不写测试文件、不保存报告。\n")
         try:
             args.modules = csv_choice(ask("检测模块 cpu,memory,disk,network", ",".join(args.modules)), MODULES)
             chosen = ask("压力测试 none/cpu/memory/cpu,memory（会占用资源）", ",".join(args.stress) or "none")
