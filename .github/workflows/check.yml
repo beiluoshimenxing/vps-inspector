@@ -1,0 +1,31 @@
+name: Validate
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test tools
+        run: sudo apt-get update && sudo apt-get install -y python3-pil fonts-dejavu-core stress-ng fio
+      - name: Verify standalone entry point and regressions
+        run: |
+          python3 build.py
+          git diff --exit-code -- check.sh
+          bash -n check.sh
+          python3 -m unittest discover -s tests -v
+      - name: Hardware smoke test (no load)
+        run: bash check.sh --modules cpu,memory,disk
+      - name: Real short stress and disposable-file I/O tests
+        run: |
+          bash check.sh --modules cpu,memory --stress cpu,memory --duration 1 --workers 1 --cpu-load 10 --memory-mib 16 | tee /tmp/stress-check.txt
+          grep -q 'Stress cpu: PASS' /tmp/stress-check.txt
+          grep -q 'Stress memory: PASS' /tmp/stress-check.txt
+          bash check.sh --modules disk --disk-bench --disk-dir /tmp --disk-mib 64 --duration 1 | tee /tmp/disk-check.txt
+          grep -q 'randread 4k:' /tmp/disk-check.txt
+          test -z "$(find /tmp -maxdepth 1 -name '.vps-inspector-*' -print -quit)"
+      - name: Actual PNG export
+        run: |
+          bash check.sh --modules cpu,memory,disk --png /tmp/vps-inspector-report.png
+          python3 -c "from PIL import Image; im=Image.open('/tmp/vps-inspector-report.png'); im.verify()"

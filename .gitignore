@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.png
+.venv/
+.pytest_cache/
+.vps-inspector-*/
