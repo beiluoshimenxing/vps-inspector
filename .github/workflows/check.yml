@@ -8,7 +8,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install test tools
-        run: sudo apt-get update && sudo apt-get install -y python3-pil fonts-dejavu-core stress-ng fio
+        run: sudo apt-get update && sudo apt-get install -y python3-pil fonts-dejavu-core stress-ng fio iputils-ping
       - name: Verify standalone entry point and regressions
         run: |
           python3 build.py
@@ -29,3 +29,10 @@ jobs:
         run: |
           bash check.sh --modules cpu,memory,disk --png /tmp/vps-inspector-report.png
           python3 -c "from PIL import Image; im=Image.open('/tmp/vps-inspector-report.png'); im.verify()"
+      - name: Real network and public launch smoke test
+        run: |
+          bash check.sh --modules network -4 --target 127.0.0.1 --ping-count 2 --http-url https://github.com/ --download-url https://raw.githubusercontent.com/beiluoshimenxing/vps-inspector/main/check.sh --download-mib 1 | tee /tmp/network-check.txt
+          grep -q ', 0% packet loss' /tmp/network-check.txt
+          grep -q 'HTTP=200' /tmp/network-check.txt
+          grep -q 'Received ' /tmp/network-check.txt
+          bash <(curl -fsSL https://raw.githubusercontent.com/beiluoshimenxing/vps-inspector/main/check.sh) --modules cpu,memory

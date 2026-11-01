@@ -67,6 +67,21 @@ class InspectorTests(unittest.TestCase):
         self.assertNotIn("\x1b", "\n".join(app.LINES))
         self.assertNotIn("\r", "\n".join(app.LINES))
 
+    def test_download_cap_when_server_ignores_range(self):
+        args = app.parser().parse_args(["--download-url", "https://example.com/file", "--download-mib", "1"])
+        class FakeProcess:
+            stdout = io.BytesIO(b"x" * (2 * 1048576))
+            def wait(self, timeout=None):
+                return 0
+        proc = FakeProcess()
+        with patch.object(app.shutil, "which", return_value="curl"), \
+             patch.object(app.subprocess, "Popen", return_value=proc), \
+             patch.object(app, "stop_process") as stop, contextlib.redirect_stdout(io.StringIO()):
+            app.download_test(args)
+        self.assertTrue(proc.stdout.closed)
+        self.assertIn("Received 1.00 MiB", "\n".join(app.LINES))
+        self.assertEqual(stop.call_count, 2)
+
     def test_cgroup_memory_ceiling(self):
         def group(name):
             return {"memory.max": [str(512 * 1048576)], "memory.current": [str(384 * 1048576)]}.get(name, [])
