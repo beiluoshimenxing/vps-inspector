@@ -13,7 +13,7 @@ if ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))'; then
   printf '%s\\n' 'Python 3.8+ required.' >&2
   exit 1
 fi
-exec python3 - "$@" <<'VPS_INSPECTOR_PYTHON'
+exec python3 -X utf8 - "$@" <<'VPS_INSPECTOR_PYTHON'
 '''
 
 def build():

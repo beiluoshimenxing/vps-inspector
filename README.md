@@ -2,6 +2,21 @@
 
 一个独立实现的 Linux VPS 检测脚本，整合 CPU、内存、硬盘和网络基础质量检测。可交互选择项目，也可用参数运行。默认仅显示终端文字，报告只在进程内存中，不写 TXT/JSON、不上传报告。可选择将报告保存成 **VPS 本地 PNG**。
 
+## v1.1 界面
+
+交互模式采用中文编号菜单：`1–4` 开关检测模块，`5` 选择压测模式，`6` 配置硬盘写入测试，`7` 配置网络，`8` 选择 PNG 保存，`9` 调整压测参数，`v` 切换原始日志，回车开始。当前选择、测试预算和缺失依赖直接显示在菜单中；输入错误可以重新选择。
+
+终端报告默认展示对齐的关键指标：CPU、内存使用条、磁盘容量、网络平均延迟/丢包/抖动、HTTPS 耗时、硬盘吞吐和 IOPS。颜色区分完成、注意/跳过和失败；末尾统一汇总需留意的项目，不生成综合跑分。单个指标的颜色不代表整机健康认证。内存和文件系统占用达到 85% 提示注意、95% 标红。
+
+原始 ping 逐包日志、完整 MTR 和工具输出默认折叠，添加 `--verbose` 或在菜单按 `v` 展开。终端自动启用 ANSI 颜色；重定向输出、`NO_COLOR=1` 或 `--color never` 时输出无颜色的文字。`--color always` 可强制颜色。中文按显示宽度对齐，终端过长的指标会省略，PNG 保留完整值。
+
+PNG 使用深色分区、顶部关键指标和状态色，直接从结构化报告绘制，不是把终端文字平铺成截图。图片标签使用英文，避免服务器缺少中文字体；如果报告含中文路径，可安装 `fonts-noto-cjk`，脚本会优先使用可用的 Noto CJK 字体。
+
+以下为**示例数据**的界面预览，不是实际 VPS 测速结果：
+
+![中文交互菜单](docs/menu-preview.png)
+![PNG 报告局部预览](docs/report-preview.png)
+
 ## 一行启动
 
 需要 **Linux、Bash、Python 3.8+** 和 curl。普通检测不要求 root。适合 Debian / Ubuntu；其他 Linux 在依赖齐全时也可运行，不保证所有发行版的命令选项一致。
@@ -90,11 +105,11 @@ sudo bash check.sh --install-deps -N
 
 自动安装支持 apt-get / dnf / apk；发行版仓库可能缺少某些包，脚本不会私自启用额外软件源。默认运行不安装任何依赖。包管理器本身可能保留安装日志和缓存。系统日志、终端回滚、用户重定向或主机服务商的记录也不属于脚本的报告保存功能。
 
-PNG 直接在内存中绘制，不生成中间 TXT/HTML，不调用云端截图服务。报告主体使用英文，交互提示和说明为中文，避免服务器缺中文字体造成图片缺字。报告可能包含本机 IP、挂载路径和测试目标，请自行判断是否分享。
+PNG 直接在内存中绘制，不生成中间 TXT/HTML，不调用云端截图服务。终端使用中文标签，PNG 使用英文标签。报告可能包含本机 IP、挂载路径和测试目标，请自行判断是否分享。
 
 ## 参数速查
 
-`-N` 交互模式；`--modules cpu,memory,disk,network`；`--stress cpu,memory`；`--duration 1..3600`；`--workers 1..256`；`--cpu-load 1..100`；`--memory-mib`；`--disk-bench`；`--disk-dir`；`--disk-mib 64..16384`；`--target`（可重复）；`-4` / `-6` / `--family both`；`--ping-count 1..30`；`--route`；`--http-url`；`--download-url`；`--download-mib 1..256`；`--png PATH`；`--install-deps`；`--help`。
+`-N` 交互模式；`--verbose` 原始日志；`--color auto|always|never`；`--modules cpu,memory,disk,network`；`--stress cpu,memory`；`--duration 1..3600`；`--workers 1..256`；`--cpu-load 1..100`；`--memory-mib`；`--disk-bench`；`--disk-dir`；`--disk-mib 64..16384`；`--target`（可重复）；`-4` / `-6` / `--family both`；`--ping-count 1..30`；`--route`；`--http-url`；`--download-url`；`--download-mib 1..256`；`--png PATH`；`--install-deps`；`--help`。
 
 `--modules` 限制检测范围，压测模块必须包含在其中。非交互模式不读取配置文件，不记住上次选择。交互模式通过 `/dev/tty` 读取选择，所以支持进程替换启动；没有终端时应使用参数。
 

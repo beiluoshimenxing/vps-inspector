@@ -18,6 +18,12 @@ import inspector as app
 class InspectorTests(unittest.TestCase):
     def setUp(self):
         app.LINES.clear()
+        app.ROWS.clear()
+        app.SUMMARY.clear()
+        app.ISSUES.clear()
+        app.VERBOSE = False
+        app.COLOR = "auto"
+        app.SECTION_NUMBER = 0
 
     def test_built_script_matches_source(self):
         expected = build.HEADER + (ROOT / "inspector.py").read_text(encoding="utf-8") + "\nVPS_INSPECTOR_PYTHON\n"
@@ -66,6 +72,67 @@ class InspectorTests(unittest.TestCase):
             app.say("hello\x1b[31m\rtest\nend")
         self.assertNotIn("\x1b", "\n".join(app.LINES))
         self.assertNotIn("\r", "\n".join(app.LINES))
+
+    def test_cjk_alignment_and_terminal_color_policy(self):
+        self.assertEqual(app.cells(app.pad("内存", 16)), 16)
+        self.assertLessEqual(app.cells(app.fit("中文标签abcdefghijk", 10)), 10)
+        self.assertEqual(len(set(app.cells(line) for line in app.frame("中文报告"))), 1)
+        class Terminal(io.StringIO):
+            def isatty(self):
+                return True
+        with patch.dict(os.environ, {"TERM": "xterm", "NO_COLOR": "1"}):
+            self.assertEqual(app.colored("test", "ok", Terminal()), "test")
+        app.COLOR = "always"
+        self.assertIn("\x1b[", app.colored("test", "ok", Terminal()))
+        app.COLOR = "never"
+        self.assertNotIn("\x1b", app.colored("test", "ok", Terminal()))
+
+    def test_number_menu_retries_and_configures_without_flag_syntax(self):
+        class Stream(io.StringIO):
+            def close(self):
+                pass
+        # Invalid key, CPU-only selection, CPU stress, short low-load settings,
+        # verbose toggle, then run. No real probes or load are executed here.
+        source = Stream("x\n2\n3\n4\n5\n1\n9\n1\n10\n16\n1\nv\nr\n")
+        output = Stream()
+        args = app.parser().parse_args([])
+        def tty_open(path, mode, **kwargs):
+            self.assertEqual(path, "/dev/tty")
+            return source if mode == "r" else output
+        with patch.object(app, "open", side_effect=tty_open, create=True), \
+             patch.object(app, "missing_tools", return_value=[]):
+            app.interactive(args, app.parser())
+        self.assertEqual(args.modules, ["cpu"])
+        self.assertEqual(args.stress, ["cpu"])
+        self.assertEqual((args.duration, args.cpu_load, args.memory_mib, args.workers), (1, 10, 16, 1))
+        self.assertTrue(args.verbose)
+        self.assertIn("请输入菜单中的编号", output.getvalue())
+
+    def test_compact_ping_metrics_hide_raw_packets_until_verbose(self):
+        text = "64 bytes from 1.1.1.1: icmp_seq=1 time=0.811 ms\n5 packets transmitted, 5 received, 0% packet loss\nrtt min/avg/max/mdev = 0.811/0.869/0.947/0.055 ms"
+        args = app.parser().parse_args(["--modules", "network", "-4", "--target", "1.1.1.1"])
+        def which(name):
+            return name if name == "ping" else None
+        with patch.object(app.shutil, "which", side_effect=which), \
+             patch.object(app, "run", return_value=(0, text)), contextlib.redirect_stdout(io.StringIO()):
+            app.network_info(args)
+        report = "\n".join(app.LINES)
+        self.assertIn("AVG 0.87 ms", report)
+        self.assertIn("LOSS 0%", report)
+        self.assertNotIn("icmp_seq", report)
+        app.VERBOSE = True
+        with contextlib.redirect_stdout(io.StringIO()):
+            app.raw_output(text)
+        self.assertIn("icmp_seq", "\n".join(app.LINES))
+
+    def test_missing_stress_is_retained_in_final_attention_summary(self):
+        with patch.object(app.platform, "system", return_value="Linux"), \
+             patch.object(app, "cpu_info"), patch.object(app.shutil, "which", return_value=None), \
+             contextlib.redirect_stdout(io.StringIO()):
+            app.main(["--modules", "cpu", "--stress", "cpu"])
+        self.assertTrue(app.ISSUES)
+        self.assertIn("缺少 stress-ng", "\n".join(app.LINES))
+        self.assertIn("需要注意", "\n".join(app.LINES))
 
     def test_download_cap_when_server_ignores_range(self):
         args = app.parser().parse_args(["--download-url", "https://example.com/file", "--download-mib", "1"])
@@ -166,7 +233,7 @@ class InspectorTests(unittest.TestCase):
         data = bytearray()
         status = None
         try:
-            os.write(fd, b"cpu\nnone\nn\nnone\n")
+            os.write(fd, b"2\n3\n4\nr\n")
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
                 ready, _, _ = select.select([fd], [], [], .2)
@@ -191,8 +258,9 @@ class InspectorTests(unittest.TestCase):
                 _, status = os.waitpid(pid, 0)
             text = data.decode(errors="replace")
             self.assertEqual(os.waitstatus_to_exitcode(status), 0, text)
-            self.assertIn("Modules: cpu", text)
-            self.assertIn("Report not saved as text", text)
+            self.assertIn("检测项目", text)
+            self.assertIn("cpu", text)
+            self.assertIn("报告仅在本次终端", text)
         finally:
             os.close(fd)
 
